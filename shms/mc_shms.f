@@ -55,16 +55,22 @@ C Math constants
 ! should still be pretty good for optics. Physics limits (e.g. elastic
 ! peak at x<=1) will not be preserved.
 
-	logical use_sieve /.false./ !use a fake sieve slit.
-c 	logical use_sieve /.true./ !use a fake sieve slit.
-c        logical use_coll /.false./ ! use fake collimator
-        logical use_coll /.true./ ! use fake collimator
-        logical*4 spec_ntuple   /.true./
+	logical use_sieve /.false./ 
+c 	logical use_sieve /.true./ 
+c        logical use_coll /.false./ ! use collimator
+        logical use_coll /.true./ ! use collimator
+!        logical*4 spec_ntuple   /.true./
 !        logical skip_hb /.true./
+        logical*4 spec_ntuple  
+        common /shms_flags/ spec_ntuple
         logical skip_hb /.false./
-c        logical use_2sieve /.true./ ! use sieve in front of HB  
-        logical use_2sieve /.false./ ! use sieve in front of HB  
-
+c
+	real*8 xs_num,ys_num,xc_sieve,yc_sieve
+	real*8 xsfr_num,ysfr_num,xc_frsieve,yc_frsieve
+        logical use_front_sieve
+c
+        common /sieve_info/  xs_num,ys_num,xc_sieve,yc_sieve
+     > ,xsfr_num,ysfr_num,xc_frsieve,yc_frsieve,use_front_sieve
 C The arguments
 
 	real*8	x,y,z				!(cm)
@@ -94,7 +100,7 @@ c collimator
 	parameter (y_off=+0.00)
 
 ! z-position of important apertures.
-	real*8 grnd ! TH - collimator test
+	real*8 grnd ! TH - collmator test
 	real*8 z_entr,z_thick,z_slit ! TH - collimator test
 
 !	parameter (z_entr = 258.0 + 0.0) ! from target center to Q1 mechanical entrance (from M. Fowler's drawing)
@@ -109,6 +115,7 @@ c  lengths of drift in different elements
 	real*8 zd_d1mid5,zd_d1mid6,zd_d1mid7
 	real*8 zd_d1mex,zd_d1out
 	real*8 zd_fp
+        real*8 zd_fr_sieve
         real*4 spec(58)
 
 c	parameter(zd_q1in  = 307.00)
@@ -130,6 +137,7 @@ c	parameter(zd_d1mid6= 53.714)
 c	parameter(zd_d1out = 53.714)
 c	parameter(zd_fp    = 327.00)
 
+        parameter(zd_fr_sieve  = 108.0)
         parameter(zd_hbin  = 118.39)
 	parameter(zd_hbmen = 20.06)
         parameter(zd_hbmex = 75.134)
@@ -213,49 +221,7 @@ C ================================ Executable Code =============================
         endif
 
 
-!-----------------------------------------------------------------------------
-! TH - START SIEVE APERTURE TESTS
-! ----------------------------------------------------------------------------
-	if (use_2sieve) then
-          z_slit=zd_hbin
-	  xt = x + z_slit * dxdz	!project to front of HB
-	  yt = y + z_slit * dydz
-	  xt = 2.5*nint(xt/2.5)	   !shift to nearest hole 
-	  yt = 1.64*nint(yt/1.64)
-	  rt = 0.3*sqrt(grnd()) ! Tanya's number
-	  tht= 2*pi*grnd()		!angle of offset.
-	  xt = xt + rt*cos(tht)
-	  yt = yt + rt*sin(tht)
-	  dxdz = (xt-x)/z_slit		!force to correct angle.
-	  dydz = (yt-y)/z_slit
-	endif
 
-
-! Force particles to go through the sieve slit holes, for mock sieve option.
-
-	if (use_sieve) then
-          z_slit=zd_hbin+zd_hbmen+zd_hbmex+zd_hbout+z_entr
-	  xt = x + z_slit * dxdz	!project to collimator
-	  yt = y + z_slit * dydz
-	  xt = 2.5*nint(xt/2.5)	   !shift to nearest hole 
-!	  xt = 7.98*nint(xt/7.98)	!shift to nearest hole.
-!	  yt = 3.99*nint(yt/3.99)
-!	  yt = 3.048*nint(yt/3.048)
-	  yt = 1.64*nint(yt/1.64)
-!          if (yt>0.)then            ! special offset sieve slit
-!           yt = 0.82+1.64*nint(yt/1.64)
-!          else
-!           yt = 1.64*nint(yt/1.64) - 0.82
-!          endif
-!	  rt = 0.254*sqrt(grnd()) !distance from center of hole(r=2.54mm)
-	  rt = 0.3*sqrt(grnd()) ! Tanya's number
-!	  rt = 0.166*sqrt(grnd()) !distance from center of hole(r=1.66mm, HB 3mrad)
-	  tht= 2*pi*grnd()		!angle of offset.
-	  xt = xt + rt*cos(tht)
-	  yt = yt + rt*sin(tht)
-	  dxdz = (xt-x)/z_slit		!force to correct angle.
-	  dydz = (yt-y)/z_slit
-	endif
 
 
 !------------------------------------------------------------------------------
@@ -283,6 +249,7 @@ C Read in transport coefficients.  Choose tune-dependent parameters.
 	    write(6,*) 'LSA tune no longer in use!'
 	    stop
 	  endif
+	  write(23,*) ' init forward matrix'
 	  call transp_init(spectr,n_classes)
 	  close (unit=chan)
 	  if (n_classes.ne.32) stop 
@@ -296,53 +263,28 @@ C------------------------------------------------------------------------------C
 
 C Begin transporting particle.
 
+c sieve in front of HB
+          if ( use_front_sieve) then
+  	   zdrift = zd_fr_sieve
+           xt=xs + zdrift*dxdzs
+           yt=ys + zdrift*dydzs
+           xsfr_num=anint(xt/1.1)
+           ysfr_num=anint(yt/0.9)
+           xc_frsieve=1.1*xsfr_num
+           yc_frsieve=0.9*ysfr_num
+           if ( sqrt((xc_frsieve - xt)**2+(yc_frsieve - yt)**2) .gt. 0.15) then
+              goto 500
+           endif
+	   xc_frsieve=xt
+	   yc_frsieve=yt
+   	   zdrift = zd_fr_sieve+3.
+           xt=xs + zdrift*dxdzs
+           yt=ys + zdrift*dydzs
+           if ( sqrt((xc_frsieve - xt)**2+(yc_frsieve - yt)**2) .gt. 0.15) then
+              goto 500
+           endif
+          endif
 
-C Do transformations, checking against apertures.
-
-
-!----------------------------------------------------------------------------
-! TH - START COLLIMATOR APERTURE TESTS
-! ---------------------------------------------------------------------------
-
-C Do transformations, checking against apertures.
-
-! Check front of fixed slit
-c	  zdrift = z_entr
-c	  call project(xs,ys,zdrift,decay_flag,dflag,m2,p,pathlen) !project and decay
-c 	   if (abs(ys-y_off).gt.h_entr) then
-c	      shmsSTOP_slit_hor = shmsSTOP_slit_hor + 1
-c	      goto 500
-c	   endif
-c	   if (abs(xs-x_off).gt.v_entr) then
-c	      shmsSTOP_slit_vert = shmsSTOP_slit_vert + 1
-c	      goto 500
-c	   endif
-c	   if (abs(xs-x_off).gt. (-v_entr/h_entr*abs(ys-y_off)+3*v_entr/2)) then
-c      	      shmsSTOP_slit_oct = shmsSTOP_slit_oct + 1
-c	      goto 500
-c	   endif
-
-! Check back of fixed slit
-*	   write (6, *) 'I am at the back of the fixed slit'
-!	  zdrift = z_exit-z_entr
-!	  call project(xs,ys,zdrift,decay_flag,dflag,m2,p,pathlen) !project and decay
-!	   if (abs(ys-y_off).gt.h_exit) then
-!	      shmsSTOP_slit_hor = shmsSTOP_slit_hor + 1
-!	      goto 500
-!	   endif
-!	   if (abs(xs-x_off).gt.v_exit) then
-!	      shmsSTOP_slit_vert = shmsSTOP_slit_vert + 1
-!	      goto 500
-!	   endif
-!	   if (abs(xs-x_off).gt. (-v_exit/h_exit*abs(ys-y_off)+3*v_exit/2)) then
-!	      shmsSTOP_slit_oct = shmsSTOP_slit_oct + 1
-!	      goto 500
-!     	   endif
-! ---------------------------------------------------------------------------
-
-! restore xs to values at pivot. Needed for sequential transformations
-c	   xs = x_transp
-c	   ys = y_transp
 
 !The HB apertures are not symmetric and tilted in the spectrometer
 !y-direction therefore we need to find the location of the central
@@ -438,7 +380,23 @@ c	   ys = y_transp
            spec(7)=xt
            spec(8)=yt
           endif
+
+          if (use_sieve ) then
+  	   zdrift = z_entr
+           xt=xs + zdrift*dxdzs
+           yt=ys + zdrift*dydzs
+           xs_num=anint(xt/2.5)
+           ys_num=anint(yt/1.64)
+           xc_sieve=2.5*xs_num
+           yc_sieve=1.64*ys_num
+           if ( sqrt((xc_sieve - xt)**2+(yc_sieve - yt)**2) .gt. 0.3) then
+              goto 500
+           endif
+	   xc_sieve=xt
+	   yc_sieve=yt
+          endif
 ! simulate collimator -------------------------------------------------
+c
           if (use_coll) then
 c           tpathlen=pathlen
   	   zdrift = z_entr
@@ -447,14 +405,17 @@ c           tpathlen=pathlen
 c	   call project(xt,yt,zdrift,decay_flag,dflag,m2,p,pathlen) !project 
  	   if (abs(yt-y_off).gt.h_entr) then
 	      shmsSTOP_slit_hor = shmsSTOP_slit_hor + 1
+	      stop_id = 5
 	      goto 500
 	   endif
 	   if (abs(xt-x_off).gt.v_entr) then
 	      shmsSTOP_slit_vert = shmsSTOP_slit_vert + 1
+	      stop_id = 5
 	      goto 500
 	   endif
 	   if (abs(xt-x_off).gt. (-v_entr/h_entr*abs(yt-y_off)+3*v_entr/2)) then
       	      shmsSTOP_slit_oct = shmsSTOP_slit_oct + 1
+	      stop_id = 5
 	      goto 500
 	   endif
 
@@ -466,14 +427,17 @@ c	   call project(xt,yt,zdrift,decay_flag,dflag,m2,p,pathlen) !project
 c	   call project(xt,yt,zdrift,decay_flag,dflag,m2,p,pathlen) !project 
 	   if (abs(yt-y_off).gt.(h_exit+0.8)) then
 	      shmsSTOP_slit_hor = shmsSTOP_slit_hor + 1
+	      stop_id = 5
 	      goto 500
 	   endif
 	   if (abs(xt-x_off).gt.(v_exit+0.8)) then
 	      shmsSTOP_slit_vert = shmsSTOP_slit_vert + 1
+	      stop_id = 5
 	      goto 500
 	   endif
 	   if (abs(xt-x_off).gt. ((-v_exit-0.8)/(h_exit+0.8)*abs(yt-y_off)+3*(v_exit+0.8)/2)) then
 	      shmsSTOP_slit_oct = shmsSTOP_slit_oct + 1
+	      stop_id = 5
 	      goto 500
      	   endif
            spec(56)=xt
@@ -489,8 +453,7 @@ c           pathlen=tpathlen
            y_q1_in = ys
 	   if ((xs*xs + ys*ys).gt.r_Q1*r_Q1) then
 	      shmsSTOP_Q1_in = shmsSTOP_Q1_in + 1
-	      stop_id = 5
-              ev_lost = 5 
+	      stop_id = 6
 	      goto 500
 	   endif
            spec(9)=xs
@@ -504,8 +467,7 @@ c           pathlen=tpathlen
            y_q1_men = ys
 	   if ((xs*xs + ys*ys).gt.r_Q1*r_Q1) then
 	      shmsSTOP_Q1_men = shmsSTOP_Q1_men + 1
-	      stop_id = 6
-              ev_lost = 6 
+	      stop_id = 7
 	      goto 500
 	   endif
 
@@ -516,8 +478,7 @@ c           pathlen=tpathlen
 	      y_q1_mid=ys
 	      if ((xs*xs + ys*ys).gt.r_Q1*r_Q1) then
 		 shmsSTOP_Q1_mid = shmsSTOP_Q1_mid + 1
-		 stop_id = 7
-		 ev_lost = 7
+		 stop_id = 8
 		 goto 500
 	      endif
 
@@ -528,8 +489,7 @@ c           pathlen=tpathlen
            y_q1_mex = ys
 	   if ((xs*xs + ys*ys).gt.r_Q1*r_Q1) then
 	      shmsSTOP_Q1_mex = shmsSTOP_Q1_mex + 1
-	      stop_id = 8
-              ev_lost = 8 
+	      stop_id = 9
 	      goto 500
 	   endif
 
@@ -540,8 +500,7 @@ c           pathlen=tpathlen
 	      y_q1_out=ys
 	      if ((xs*xs + ys*ys).gt.r_Q1*r_Q1) then
 		 shmsSTOP_Q1_out = shmsSTOP_Q1_out + 1
-		 stop_id = 9
-		 ev_lost = 9
+		 stop_id = 10
 		 goto 500
 	      endif
 
@@ -552,8 +511,7 @@ c           pathlen=tpathlen
            y_q2_in = ys
 	   if ((xs*xs + ys*ys).gt.r_Q2*r_Q2) then
 	      shmsSTOP_Q2_in = shmsSTOP_Q2_in + 1
-	      stop_id = 10
-              ev_lost = 10 
+	      stop_id = 11
 	      goto 500
 	   endif
            spec(11)=xs
@@ -566,8 +524,7 @@ c           pathlen=tpathlen
            y_q2_men = ys
 	   if ((xs*xs + ys*ys).gt.r_Q2*r_Q2) then
 	      shmsSTOP_Q2_men = shmsSTOP_Q2_men + 1
-	      stop_id = 11
-              ev_lost = 11
+	      stop_id = 12
 	      goto 500
 	   endif
 
@@ -578,8 +535,7 @@ c           pathlen=tpathlen
 	      y_q2_mid=ys
 	      if ((xs*xs + ys*ys).gt.r_Q2*r_Q2) then
 		 shmsSTOP_Q2_mid = shmsSTOP_Q2_mid + 1
-		 stop_id = 12
-		 ev_lost = 12
+		 stop_id = 13
 		 goto 500
 	      endif
 
@@ -590,8 +546,7 @@ c           pathlen=tpathlen
            y_q2_mex = ys
 	   if ((xs*xs + ys*ys).gt.r_Q2*r_Q2) then
 	      shmsSTOP_Q2_mex = shmsSTOP_Q2_mex + 1
-	      stop_id = 13
-              ev_lost = 13 
+	      stop_id = 14
 	      goto 500
 	   endif
 
@@ -602,8 +557,7 @@ c           pathlen=tpathlen
 	      y_q2_out=ys
 	      if ((xs*xs + ys*ys).gt.r_Q2*r_Q2) then
 		 shmsSTOP_Q2_out = shmsSTOP_Q2_out + 1
-		 stop_id = 14
-		 ev_lost = 14
+		 stop_id = 15
 		 goto 500
 	      endif
 
@@ -614,8 +568,7 @@ c           pathlen=tpathlen
            y_q3_in = ys
 	   if ((xs*xs + ys*ys).gt.r_Q3*r_Q3) then
 	      shmsSTOP_Q3_in = shmsSTOP_Q3_in + 1
-	      stop_id = 15
-              ev_lost = 15 
+	      stop_id = 16
 	      goto 500
 	   endif
            spec(13)=xs
@@ -628,8 +581,7 @@ c           pathlen=tpathlen
            y_q3_men = ys
 	   if ((xs*xs + ys*ys).gt.r_Q3*r_Q3) then
 	      shmsSTOP_Q3_men = shmsSTOP_Q3_men + 1
-	      stop_id = 16
-              ev_lost = 16 
+	      stop_id = 17
 	      goto 500
 	   endif
 
@@ -640,8 +592,7 @@ c           pathlen=tpathlen
 	      y_q3_mid=ys
 	      if ((xs*xs + ys*ys).gt.r_Q3*r_Q3) then
 		 shmsSTOP_Q3_mid = shmsSTOP_Q3_mid + 1
-		 stop_id = 17
-		 ev_lost = 17
+		 stop_id = 18
 		 goto 500
 	      endif
 
@@ -652,8 +603,7 @@ c           pathlen=tpathlen
            y_q3_mex = ys
 	   if ((xs*xs + ys*ys).gt.r_Q3*r_Q3) then
 	      shmsSTOP_Q3_mex = shmsSTOP_Q3_mex + 1
-	      stop_id = 18
-              ev_lost = 18 
+	      stop_id = 19
 	      goto 500
 	   endif
 
@@ -664,8 +614,7 @@ c           pathlen=tpathlen
 	      y_q3_out=ys
 	      if ((xs*xs + ys*ys).gt.r_Q3*r_Q3) then
 		 shmsSTOP_Q3_out = shmsSTOP_Q3_out + 1
-		 stop_id = 19
-		 ev_lost = 19
+		 stop_id = 20
 		 goto 500
 	      endif
 
@@ -724,8 +673,7 @@ c           pathlen=tpathlen
 	      y_d_in=ys
 	      if ((xs*xs + ys*ys).gt.r_D1*r_D1) then
 		 shmsSTOP_D1_in = shmsSTOP_D1_in + 1
-		 stop_id = 20
-		 ev_lost = 20
+		 stop_id = 21
 		 goto 500
 	      endif
 	      spec(15)=xs
@@ -744,8 +692,7 @@ c           pathlen=tpathlen
 	   y_d_flr=yt
 	   if ((xt*xt + yt*yt).gt.r_D1*r_D1) then
 	      shmsSTOP_D1_flr = shmsSTOP_D1_flr + 1
-	      stop_id =21
-	      ev_lost =21
+	      stop_id =22
 	      goto 500
 	   endif
 	   spec(17)=xt
@@ -764,8 +711,7 @@ c           pathlen=tpathlen
 	   y_d_men=yt
 	   if ((xt*xt + yt*yt).gt.r_D1*r_D1) then
 	      shmsSTOP_D1_men = shmsSTOP_D1_men + 1
-	      stop_id =22
-	      ev_lost =22
+	      stop_id =23
 	      goto 500
 	   endif
 	   spec(19)=xt
@@ -784,8 +730,7 @@ c           pathlen=tpathlen
 	   y_d_m1=yt
 	   if ((xt*xt + yt*yt).gt.r_D1*r_D1) then
 	      shmsSTOP_D1_mid1 = shmsSTOP_D1_mid1 + 1
-	      stop_id=23
-	      ev_lost=23
+	      stop_id=24
 	      goto 500
 	   endif
 	   spec(21)=xt
@@ -804,8 +749,7 @@ c           pathlen=tpathlen
 	   y_d_m2=yt
 	   if ((xt*xt + yt*yt).gt.r_D1*r_D1) then
 	      shmsSTOP_D1_mid2 = shmsSTOP_D1_mid2 + 1
-	      stop_id=24
-	      ev_lost=24
+	      stop_id=25
 	      goto 500
 	   endif
 	   spec(23)=xt
@@ -822,8 +766,7 @@ c           pathlen=tpathlen
 	   y_d_m3=yt
 	   if ((xt*xt + yt*yt).gt.r_D1*r_D1) then
 	      shmsSTOP_D1_mid3 = shmsSTOP_D1_mid3 + 1
-	      stop_id=25
-	      ev_lost=25
+	      stop_id=26
 	      goto 500
  	   endif
 	   spec(25)=xt
@@ -841,8 +784,7 @@ c           pathlen=tpathlen
 	   y_d_m4=yt
 	   if ((xt*xt + yt*yt).gt.r_D1*r_D1) then
 	      shmsSTOP_D1_mid4 = shmsSTOP_D1_mid4 + 1
-	      stop_id=26
-	      ev_lost=26
+	      stop_id=27
 	      goto 500
 	   endif
 	   spec(27)=xt
@@ -859,8 +801,7 @@ c           pathlen=tpathlen
 	   y_d_m5=yt
 	   if ((xt*xt + yt*yt).gt.r_D1*r_D1) then
 	      shmsSTOP_D1_mid5 = shmsSTOP_D1_mid5 + 1
-	      stop_id=27
-	      ev_lost=27
+	      stop_id=28
 	      goto 500
 	   endif
 	   spec(29)=xt
@@ -877,8 +818,7 @@ c           pathlen=tpathlen
 	   y_d_m6=yt
 	   if ((xt*xt + yt*yt).gt.r_D1*r_D1) then
 	      shmsSTOP_D1_mid6 = shmsSTOP_D1_mid6 + 1
-	      stop_id=28
-	      ev_lost=28
+	      stop_id=29
 	      goto 500
 	   endif
 	   spec(31)=xt
@@ -895,8 +835,7 @@ c           pathlen=tpathlen
 	   y_d_m7=yt
 	   if ((xt*xt + yt*yt).gt.r_D1*r_D1) then
 	      shmsSTOP_D1_mid7 = shmsSTOP_D1_mid7 + 1
-	      stop_id=29
-	      ev_lost=29
+	      stop_id=30
 	      goto 500
 	   endif
 	   spec(33)=xt
@@ -916,8 +855,7 @@ c           pathlen=tpathlen
 	   y_d_mex=yt
 	   if ((xt*xt + yt*yt).gt.r_D1*r_D1) then
 	      shmsSTOP_D1_mex = shmsSTOP_D1_mex + 1
-	      stop_id =30
-	      ev_lost =30
+	      stop_id =31
 	      goto 500
 	   endif
 	   spec(35)=xt
@@ -935,8 +873,7 @@ c           pathlen=tpathlen
 	   y_d_out=yt
 	   if ((xt*xt + yt*yt).gt.r_D1*r_D1) then
 	      shmsSTOP_D1_out = shmsSTOP_D1_out + 1
-	      stop_id=31
-	      ev_lost=31
+	      stop_id=32
 	      goto 500
 	   endif
            spec(37)=xt
@@ -965,6 +902,7 @@ C and track through the detector hut
      >		decay_flag,dflag,resmult,spec,
      >          ok_hut,0.0,pathlen,spectr)
 	   if (.not. ok_hut) then
+	      stop_id=33
 	      goto 500
 	   endif
 

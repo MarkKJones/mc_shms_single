@@ -10,7 +10,7 @@ To compile type "make"
 Main code is mc_shms_single.f
 
 If include files are changed it is best to do "make Clean" and then "make"
-since the Makefile is not smart enough to look for dependencyy
+since the Makefile is not smart enough to look for dependency
 
 Running code
 ------------
@@ -20,7 +20,15 @@ mc_shms_single
 
 * Input file : infile_name.inp
 * Output file is at outfiles/infile_name.out 
-* The hbook file is at worksim/infile_name.rzdat 
+* The hbook file is at worksim/infile_name.rzdat
+* Hard coded flags in mc_shms_single.f 
+** hut_ntuple : Write out ntuple 1411 described below. (true)
+** spec_ntuple: Write out ntuple 1412 described below (false)
+** decay_flag :	Allow decay of particle(false)
+** use_front_sieve : Pass particles through front sieve (false)   
+* Hard coded flags in shms/mc_shms.f 
+** use_sieve : pass particles through the sieve between HB and Q1 (false)
+** use_coll  : pass particles through the collimator between HB and Q1 (true)
 
 Code flow
 --------- 
@@ -35,7 +43,8 @@ Code flow
 * Calculated multiple scattering the target using the input radiation length
 ** If target length greater than 3cm assume LH2 cryotarget for multiple scattering calculation.
 **  If target length less than 3cm assume simple solid target for multiple scattering calculation.
-* calulated mutliple scattering in scattering chamber window, air and spectrometer entrance window.* Call the mc_shms subroutine to transport the particle through SHMS apertures and to the focal plane.
+* calulated mutliple scattering in scattering chamber window, air and spectrometer entrance window.
+* Call the mc_shms subroutine to transport the particle through SHMS apertures and to the focal plane.
 * At the focal plane drift the particle through  1st Cerenkov or vacuum pipe ( depended in flag in input file),the drift chamber, scintillators, 2nd cerenkov and calorimeter to check if it hits them . 
 * As it passes through the drift chamber randomly change the position according to the presumed DC resolution and fit the positions and calculate the focal plane positions and angles.
 * From focal plane calculate the reconstructed target quantities ytar,yptar,xptar and delta using the optics matrix. Note that for now use the known x target position in the optics matrix calculations. To mimic what would be in the analysis, need to calculate xtar from the reconstructed quantities using the raster vertical position and then recalculate the reconstructed quantities with updated xtar.
@@ -57,8 +66,7 @@ Info on infiles
 * theta down and up is dy/dz , horizontal angle relative to central ray keep at least -55,55mr
 * phi down and up is the dx/dz, vertical angle relative to central ray ,keep at least -50, 50mr
 * Remember to keep the Dp/p,theta,phi and ztgt reconstruction cut larger than thrown. 
-* The target length just 
-* need to set flag if aerogel will be in the detector stack
+* The target length just need to set flag if aerogel will be in the detector stack
 * Up to the experiment to decide if the 1st Cerenkov detector will be needed for the experiemnt
 * If 1st Cerenkov not used then can replace with vacuum pipe. Option of helium bag is availble. this was for study.  
 
@@ -80,3 +88,7 @@ Ntuple variables in hut ntuple ntuple id = 1411
 * hsxptar Reconstructed 
 * hsxtari  Initial x (vertical) position at the z=0 plane perpendicular to central ray of SHMS
 * yrast   Initial random vertical raster position
+* xsnum   sieve slit vertical hole number ( hole number at front sieve if use_front_sieve = true)
+* ysnum   sieve slit horizontal hole number ( hole number at front sieve if use_front_sieve = true)
+* xsieve   sieve slit vertical position (cm)  ( position at front sieve if use_front_sieve = true)
+* ysieve   sieve slit horizontal position (cm) ( position at front sieve if use_front_sieve = true)
