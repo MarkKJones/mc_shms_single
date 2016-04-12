@@ -17,16 +17,16 @@ C HBOOK/NTUPLE common block and parameters.
 	parameter	(pawc_size = 1000000)
 	common		/pawc/ hbdata(pawc_size)
 	integer*4	hbdata
-	character*8	hut_nt_names(16)/
+	character*8	hut_nt_names(20)/
      >			'hsxfp', 'hsyfp', 'hsxpfp', 'hsypfp',
      >			'hsztari','hsytari', 'hsdeltai', 'hsyptari', 'hsxptari',
      >			'hsztar','hsytar', 'hsdelta', 'hsyptar', 'hsxptar', 
-     >                  'hsxtari','yrast'/
-	real*4		hut(16)
+     >                  'hsxtari','yrast','xsnum','ysnum','xsieve'
+     >                  ,'ysieve'/
+	real*4		hut(20)
 
 	character*8	spec_nt_names(58)/
-     >			's_hb1_x', 's_hb1_y','s_hb2_x', 's_hb2_y','s_hb3_x'
-     >                  , 's_hb3_y','s_hb4_x', 's_hb4_y', 's_q1_x', 's_q1_y', ! 10
+     >			's_hb1_x', 's_hb1_y','s_hb2_x', 's_hb2_y','s_hb3_x', 's_hb3_y','s_hb4_x', 's_hb4_y', 's_q1_x', 's_q1_y', ! 10
      >                  's_q2_x', 's_q2_y', 's_q3_x', 's_q3_y', !14
      >                  's_d1_x', 's_d1_y', 's_d1f_x', 's_d1f_y', !18
      >                  's_dme_x', 's_dme_y', 's_dm1_x', 's_dm1_y', !22
@@ -41,6 +41,13 @@ C HBOOK/NTUPLE common block and parameters.
      >                  'sdelta', 'sxptar', 'syptar', 'sxcoll', 
      >                  'sycoll', 'sflag'/
 	real*4          spec(58)
+c
+	real*8 xs_num,ys_num,xc_sieve,yc_sieve
+	real*8 xsfr_num,ysfr_num,xc_frsieve,yc_frsieve
+        logical use_front_sieve /.false./
+c
+        common /sieve_info/  xs_num,ys_num,xc_sieve,yc_sieve
+     > ,xsfr_num,ysfr_num,xc_frsieve,yc_frsieve,use_front_sieve
 
 
 C Local declarations.
@@ -81,7 +88,6 @@ C Initial and reconstructed track quantities.
 	real*8 x_fp,y_fp,dx_fp,dy_fp		!at focal plane
 	real*8 p_spec,th_spec			!spectrometer setting
 	real*8 resmult
-	real*8 tar_pass_len
 
 C Control flags (from input file)
 	integer*4 p_flag			!particle identification
@@ -156,6 +162,12 @@ C
 	shmsSTOP_Q3_mid	= 0
 	shmsSTOP_Q3_mex	= 0
 	shmsSTOP_Q3_out	= 0
+c	shmsSTOP_Q3_out1	= 0
+c	shmsSTOP_Q3_out2	= 0
+c	shmsSTOP_Q3_out3	= 0
+c	shmsSTOP_Q3_out4	= 0
+c	shmsSTOP_Q3_out5	= 0
+c	shmsSTOP_Q3_out6	= 0
 	shmsSTOP_D1_in	= 0
         shmsSTOP_D1_flr = 0
 	shmsSTOP_D1_men = 0
@@ -194,14 +206,22 @@ C Initialize HBOOK/NTUPLE if used.
 	  call hlimit(pawc_size)
 	  filename = 'worksim/'//rawname(1:last_char(rawname))//'.rzdat'
 
+cmkj          iquest(10) = 256000
+cmkj	  iquest(10) = 510000
+! see for example
+!   http://wwwasd.web.cern.ch/wwwasd/cgi-bin/listpawfaqs.pl/7
+! the file size is limited to ~260M no matter how I change iquest !
+cmkj	  call hropen(30,'HUT',filename,'NQ',4096,i) !CERNLIB
 	  call hropen(30,'HUT',filename,'N',1024,i) !CERNLIB
  
 	  if (i.ne.0) then
+! TH - use "write" instead of "type" for gfortran. Change this everywhere below
+!	    type *,'HROPEN error: istat = ',i
 	    write(*,*),'HROPEN error: istat = ',i
 	    stop
 	  endif
 
-	  call hbookn(1411,'HUT NTUPLE',16,'HUT',10000,hut_nt_names)
+	  call hbookn(1411,'HUT NTUPLE',20,'HUT',10000,hut_nt_names)
           if (spec_ntuple) then
            call hbookn(1412,'SPEC NTU',58,'HUT',10000,spec_nt_names)
           endif
@@ -240,7 +260,7 @@ C Strip off header
 	cos_ts = cos(th_spec)
 	sin_ts = sin(th_spec)
 
-! M.C. limits (half width's for delta,yptar,xptar, full width's for x,y,z)
+! M.C. limits (half width's for dp,th,ph, full width's for x,y,z)
 	do i=1,3
 	  read (chanin,1001) str_line
 	  write(*,*),str_line(1:last_char(str_line))
@@ -350,6 +370,8 @@ C------------------------------------------------------------------------------C
 
 	stime = secnds(zero)
 
+! TH - use "Itrial" instead of "trial" for gfortran. Somehow the stringlib.f
+! function does not type cast string to integer otherwise.
           itime=time8()
    	  call ctime(itime,timestring)
 	  call srand(itime)
@@ -449,17 +471,17 @@ C Solid target
 	  else
 	     musc_targ_len = abs(gen_lim(6)/2. - z)/rad_len_cm/cos_ev
 	  endif
-          tar_pass_len=musc_targ_len 
 
 C Scattering before magnets:  Approximate all scattering as occuring AT TARGET.
 C  16 mil Al scattering chamber window (X0=8.89cm)
-C  15(?) cm air (X0=30420cm)
+C  15 cm air (X0=30420cm)
 C spectrometer entrance window
-C  20 mil aluminum          
+C  20 mil Al s (X0=8.89cm)
 
 	  musc_targ_len = musc_targ_len + .016*2.54/8.89 +
-     >          15./30420. +  .012*2.54/8.89 
-	  if (ms_flag) call musc(m2,p_spec*(1.+dpp_s/100.),
+     >          15./30420. +  .020*2.54/8.89
+c
+	  if (ms_flag ) call musc(m2,p_spec*(1.+dpp_s/100.),
      > musc_targ_len,dydz_s,dxdz_s)
 
 !-----------------------------------------------------------------------------
@@ -523,6 +545,16 @@ C Output NTUPLE entry.
 	      hut(14)= dph_recon/1000.
 	      hut(15)= xtar_init
 	      hut(16)= y
+	      hut(17)= xs_num
+	      hut(18)= ys_num
+	      hut(19)= xc_sieve
+	      hut(20)= yc_sieve
+              if (use_front_sieve) then
+	      hut(17)= xsfr_num
+	      hut(18)= ysfr_num
+	      hut(19)= xc_frsieve
+	      hut(20)= yc_frsieve
+              endif
 	      call hfn(1411,hut)
 	    endif
 

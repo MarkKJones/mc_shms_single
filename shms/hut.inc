@@ -32,25 +32,25 @@ C helium bag
 	parameter (helbag_al_radlen = 8.89)
 	parameter (helbag_al_thick = 3e-4)   !0.03%
 
-C chamber entrance foil, 1 mil of Mylar ( ignore 1000A of aluminum)
+C chamber entrance foil, 1 mil of Mylar
 	real*8 hdc_entr_radlen,hdc_entr_thick
 	parameter (hdc_entr_radlen = 28.7)
 	parameter (hdc_entr_thick  = 0.001*2.54)
 
-C chamber gas, 50/50 ethane/argon 1/8inch between cathode and sense plane
+C chamber gas, 50/50 ethane/argon
 	real*8 hdc_radlen,hdc_thick
 	parameter (hdc_radlen = 16700.0)
-	parameter (hdc_thick  = 0.125*2.54)
+	parameter (hdc_thick  = 0.61775)
 
 C effective wire plane, 25 micron W+Be/Cu gives <t>=pi*(.0025/2)**2
 	real*8 hdc_wire_radlen,hdc_wire_thick
 	parameter (hdc_wire_radlen = 0.35)	!Assuming all Tungsten
 	parameter (hdc_wire_thick  = 0.0000354)
 
-C effective cathode plane, 1 mil Kapton with 1200A of copper ( ignore copper)
+C effective cathode plane, Be/Cu
 	real*8 hdc_cath_radlen,hdc_cath_thick
-	parameter (hdc_cath_radlen = 28.6)	!
-	parameter (hdc_cath_thick  = 0.001*2.54)
+	parameter (hdc_cath_radlen = 28.7)	!'Ave' of Be/Cu
+	parameter (hdc_cath_thick  = 0.0005*2.54)
 
 C chamber exit foil, 1 mil of Mylar
 	real*8 hdc_exit_radlen,hdc_exit_thick
@@ -61,32 +61,20 @@ C hodoscopes
 	real*8 hscin_radlen
 	parameter (hscin_radlen =  42.4)
 
-C Ar/neo Cherenkov entrance foil, 2 mil of Al from D Day spreadsheet Jan 27 2012
+C Ar/neo Cherenkov entrance foil, Tedlar ( update from D. Day spreadsheet Feb 2016)
 	real*8 hcer_entr_radlen,hcer_entr_thick
-	parameter (hcer_entr_radlen = 8.90)
+	parameter (hcer_entr_radlen = 19.63)
 	parameter (hcer_entr_thick  = 0.002*2.54)
 C Ar/neo Cherenkov, for now 100% argon
 	real*8 hcer_1_radlen
 	parameter (hcer_1_radlen = 11700.0)
-C Ar/neo Cherenkov mirror, glass is 0.3cm, back is 
+C Ar/neo Cherenkov mirror, SiO2 , no backing
 	real*8 hcer_mirglass_radlen,hcer_mirglass_thick
 	parameter (hcer_mirglass_radlen = 12.29)
-	parameter (hcer_mirglass_thick  = 0.3)! Frac rad len = 2.4%
-	real*8 hcer_mirback1_radlen,hcer_mirback1_thick ! carbon
-	parameter (hcer_mirback1_radlen = 42.7)
-	parameter (hcer_mirback1_thick  = 0.016*2.54) ! 
-	real*8 hcer_mirback2_radlen,hcer_mirback2_thick ! Rohacell
-	parameter (hcer_mirback2_radlen = 540.7)
-	parameter (hcer_mirback2_thick  = 1.27) ! 
-	real*8 hcer_mirback3_radlen,hcer_mirback3_thick! carbon
-	parameter (hcer_mirback3_radlen = 42.7)
-	parameter (hcer_mirback3_thick  = 0.016*2.54) ! 
-	real*8 hcer_mirback4_radlen,hcer_mirback4_thick! Rohacell
-	parameter (hcer_mirback4_radlen = 540.7)
-	parameter (hcer_mirback4_thick  = 2.54) ! 
-C Ar/neo Cherenkov exit foil,
+	parameter (hcer_mirglass_thick  = 0.3)
+C Ar/neo Cherenkov exit foil Tedlar  ( update from D. Day spreadsheet Feb 2016)
 	real*8 hcer_exit_radlen,hcer_exit_thick
-	parameter (hcer_exit_radlen = 8.90)
+	parameter (hcer_exit_radlen = 19.63)
 	parameter (hcer_exit_thick  = 0.002*2.54)
 
 
@@ -132,8 +120,6 @@ C Wire chamber resolutions (sigma)
 c SHMS chambers assume sigma=200um per plane
 c   planes will be two sets of 2u,2v,2x but need to mock it by 2 sets of 4x,2y
 c      planes 2 and 5 in group of 6 are y planes
-c	real*8 hdc_sigma(1:12)/	0.024,0.014,0.024,0.017,0.014,0.017,
-c     >				0.024,0.014,0.024,0.017,0.014,0.017/
 	real*8 hdc_sigma(1:12)/	0.020,0.020,0.020,0.020,0.020,0.020,
      >				0.020,0.020,0.020,0.020,0.020,0.020/
 
@@ -193,14 +179,14 @@ C Scintillator positions and thicknesses
 	parameter (hscin_1x_left  =  45.)
 	parameter (hscin_1x_right = -45.)
 	parameter (hscin_1x_offset = 0.0)
-	parameter (hscin_1y_top   = -45.)
-	parameter (hscin_1y_bot   =  45.)
+	parameter (hscin_1y_top   = -40.)
+	parameter (hscin_1y_bot   =  50.)
 	parameter (hscin_1y_offset = 0.0)
 	parameter (hscin_2x_left  =   55.)
 	parameter (hscin_2x_right =  -55.)
 	parameter (hscin_2x_offset =  0.)
-	parameter (hscin_2y_top   = -57.5)
-	parameter (hscin_2y_bot   =  57.5)
+	parameter (hscin_2y_top   = -52.5)
+	parameter (hscin_2y_bot   =  62.5)
 	parameter (hscin_2y_offset = 0)
 
 
@@ -216,8 +202,8 @@ C Cherenkov position
 	parameter (hcer_2_zexit     = 202.600)
 	parameter (hcer_left     =  45.00)
 	parameter (hcer_right    = -45.00)
-	parameter (hcer_top      = -55.00)
-	parameter (hcer_bottom   =  55.00)
+	parameter (hcer_top      = -50.00)
+	parameter (hcer_bottom   =  60.00)
 
 
 C Calorimeter position
