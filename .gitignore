@@ -1,6 +1,10 @@
 *.o
 *~
 *#
+*.d
+*.so
 last.kumac
 paw.metafile
 mc_shms_single
+rootfiles/*
+

@@ -28,13 +28,13 @@ my_objs = $(SPEC)mc_shms.o $(SPEC)mc_shms_hut.o $(SPEC)mc_shms_recon.o \
 	  $(SHARE)project.o $(SHARE)transp.o $(SHARE)rotate_haxis.o \
 	  $(SHARE)rotate_vaxis.o $(SHARE)locforunt.o $(SHARE)musc.o \
           $(SHARE)musc_ext.o $(SHARE)stringlib.o mt19937.o gauss1.o \
-          loren.o
+          loren.o F1F209_rss.o
 
 sub_objs = $(SPEC)mc_shms.o $(SPEC)mc_shms_hut.o $(SPEC)mc_shms_recon_sub.o \
 	  $(SHARE)project.o $(SHARE)transp_sub.o $(SHARE)rotate_haxis.o \
 	  $(SHARE)rotate_vaxis.o $(SHARE)locforunt.o $(SHARE)musc.o \
           $(SHARE)musc_ext.o $(SHARE)stringlib.o mt19937.o gauss1.o \
-          loren.o
+          loren.o F1F209_rss.o
 
 MYOS := $(subst -,,$(shell uname))
 #mess $(MYOS)

@@ -17,13 +17,16 @@ C HBOOK/NTUPLE common block and parameters.
 	parameter	(pawc_size = 1000000)
 	common		/pawc/ hbdata(pawc_size)
 	integer*4	hbdata
-	character*8	hut_nt_names(20)/
+	character*8	hut_nt_names(28)/
      >			'hsxfp', 'hsyfp', 'hsxpfp', 'hsypfp',
      >			'hsztari','hsytari', 'hsdeltai', 'hsyptari', 'hsxptari',
      >			'hsztar','hsytar', 'hsdelta', 'hsyptar', 'hsxptar', 
      >                  'hsxtari','yrast','xsnum','ysnum','xsieve'
-     >                  ,'ysieve'/
-	real*4		hut(20)
+     >                  ,'ysieve'
+     >                  ,'evtype','normfac','xsn'
+     >                  ,'theta','eprime','ecalc','Q2','W'
+     >                  /
+	real*4		hut(28)
 
 	character*8	spec_nt_names(58)/
      >			's_hb1_x', 's_hb1_y','s_hb2_x', 's_hb2_y','s_hb3_x', 's_hb3_y','s_hb4_x', 's_hb4_y', 's_q1_x', 's_q1_y', ! 10
@@ -110,7 +113,21 @@ C Hardwired control flags.
 C Local  spectrometer varibales
 	real*8 x_s,y_s,z_s
 	real*8 dxdz_s,dydz_s,dpp_s
-
+c carbon cross section
+	integer doing_carbon /0/
+	real*8 mass_tar,theta_pol,ebeam,eprime
+        real*8 car_density /2.2/ ! g/cm3
+	REAL*8 q2_vertex,W_vertex
+	real event_type
+	real*8 Q_E, N_A,lumin,ep_min,ep_max,domega,denergy
+	real*8 sig_elastic,sig_inelastic
+	real*8 cur,normfac,thick
+	real*8 theta_recon,eprime_recon,eprime_calc
+        PARAMETER (Q_E = 1.602d00)            !e- charge in uCoul (*1E-13)
+        PARAMETER (N_A = 6.022d00)            !Avogadro's number (*1E+23)
+	real*8 hbarcsq,sig_mott
+        real*8 thrown_wt
+c
 C Function definitions.
 
 	integer*4	last_char
@@ -221,7 +238,7 @@ cmkj	  call hropen(30,'HUT',filename,'NQ',4096,i) !CERNLIB
 	    stop
 	  endif
 
-	  call hbookn(1411,'HUT NTUPLE',20,'HUT',10000,hut_nt_names)
+	  call hbookn(1411,'HUT NTUPLE',28,'HUT',10000,hut_nt_names)
           if (spec_ntuple) then
            call hbookn(1412,'SPEC NTU',58,'HUT',10000,spec_nt_names)
           endif
@@ -350,6 +367,20 @@ C Strip off header
 	if (tmp_int.eq.1) vac_flag = .true.
 
 
+! Read in flag   doing carbon cross section for elastic , 4.4 excited state and QE scattering
+	read (chanin,1001,end=888) str_line
+	write(*,*),str_line(1:last_char(str_line))
+	if (.not.rd_int(str_line,tmp_int)) 
+     > stop 'ERROR: carbon xn flag in setup file!'
+	doing_carbon = tmp_int
+
+! Read in radiation length of target material in cm
+	read (chanin,1001) str_line
+	write(*,*),str_line(1:last_char(str_line))
+	if (.not.rd_real(str_line,ebeam)) 
+     > stop 'ERROR beam energy in setup!'
+
+ 888	continue
 C Set particle masses.
 	m2 = me2			!default to electron
 	if(p_flag.eq.0) then
@@ -402,6 +433,48 @@ C dxdz and dydz in HMS TRANSPORT coordinates.
      &          /1000.   + gen_lim_down(2)/1000.
 	  dxdz = rand()*(gen_lim_up(3)-gen_lim_down(3))
      &          /1000.   + gen_lim_down(3)/1000.
+c If doing carbon elastics and quasielastics
+	    event_type=0.  
+	  if (doing_carbon .ge. 1) then
+	    mass_tar = 12.*931.5
+            cur=20. ! microAmps
+	    thick=car_density*gen_lim(6)  ! g/cm2
+            ep_min = p_spec*(1.+0.01*gen_lim_down(1))
+	    ep_max = p_spec*(1.+0.01*gen_lim_up(1))
+	    domega = (gen_lim_up(3)-gen_lim_down(3))*(gen_lim_up(2)-gen_lim_down(2))/1000./1000.
+	    denergy = ep_max-ep_min
+	    lumin=thick*cur/12.*N_A/Q_E*1e+10 !per fm2 per sec at 20uA 
+            theta_pol = acos( (cos_ts + dydz*sin_ts)
+     +                        / sqrt( 1. + dxdz**2 + dydz**2 ) )
+	    thrown_wt = 1.
+	    if (doing_carbon .eq. 2) then
+	     thrown_wt = 2.
+	     if (grnd() .le. 0.5) then ! elastic carbon scattering
+ 	      eprime = mass_tar*ebeam/(ebeam*(1-cos(theta_pol))+mass_tar)
+	      dpp = (eprime-p_spec)/p_spec*100.
+	      event_type=1.  
+	     else
+	      event_type=3.  
+	      eprime= p_spec*(1+0.01*dpp)
+	      Q2_vertex= 4.0*ebeam*eprime*sin(theta_pol/2)**2
+              W_vertex= 2.*938.27*(ebeam-eprime) + (938.27)**2 - Q2_vertex
+              if ( W_vertex .gt. 0)  W_vertex = sqrt(W_vertex)
+	      if (  W_vertex .le. 0 ) goto 500
+	      if (  ebeam-eprime .le. 0 ) goto 500
+	     endif
+	    endif
+	    if (doing_carbon .eq. 1) then
+	     event_type=3.  
+	     eprime= p_spec*(1+0.01*dpp)
+	     Q2_vertex= 4.0*ebeam*eprime*sin(theta_pol/2)**2
+             W_vertex= 2.*938.27*(ebeam-eprime) + (938.27)**2 - Q2_vertex
+             if ( W_vertex .gt. 0)  W_vertex = sqrt(W_vertex)
+	     if (  W_vertex .le. 0 ) goto 500
+	     if (  ebeam-eprime .le. 0 ) goto 500
+            endif	    
+	  endif
+c
+
 
 
 C Transform from target to SHMS (TRANSPORT) coordinates.
@@ -524,7 +597,26 @@ c            if (ok_spec) spec(58) =1.
 	    dph_recon = dxdz_s*1000.			!mr
 	    ztar_recon = + y_s / sin_ts 
             ytar_recon = y_s
-
+	    if ( doing_carbon .ge. 1) then
+            theta_recon = acos( (cos_ts + dydz_s*sin_ts)
+     +                        / sqrt( 1. + dxdz_s**2 + dydz_s**2 ) )
+	    eprime_recon= p_spec*(1+0.01*dpp_s)
+	    eprime_calc=  mass_tar*ebeam/(ebeam*(1-cos(theta_recon))+mass_tar)
+	    endif
+c
+	    if (event_type .eq. 1) then
+	       call calc_elastic_sig(theta_pol*180./3.14159,sig_elastic)
+	       normfac=thrown_wt*sig_elastic*lumin*domega/n_trials
+	    endif
+	    if (event_type .eq. 3) then
+	      call calc_inelastic_sig(theta_pol,ebeam-eprime,Q2_vertex,W_vertex,sig_inelastic)
+                 hbarcsq=0.389379292d0
+                 sig_mott = alpha**2 / (Q2_vertex/1.d6) / tan(theta_pol/2.0d0)**2 * eprime/ebeam
+                 sig_mott = sig_mott * hbarcsq * 1.0e-4  !!xsec in fm2/MeV/str/nuc
+		 sig_inelastic = sig_mott*sig_inelastic
+	         normfac=thrown_wt*sig_inelastic*lumin*domega*denergy/n_trials
+	    endif
+c
 
 C Output NTUPLE entry.
 
@@ -555,6 +647,15 @@ C Output NTUPLE entry.
 	      hut(19)= xc_frsieve
 	      hut(20)= yc_frsieve
               endif
+	      hut(21)=event_type
+	      hut(22)=normfac
+	      if (event_type .eq. 1) hut(23)=sig_elastic
+	      if (event_type .eq. 3) hut(23)=sig_inelastic
+	      hut(24)=theta_recon
+	      hut(25)=eprime_recon
+	      hut(26)=eprime_calc
+	      hut(27)=Q2_vertex*1e-6
+	      hut(28)=W_vertex*1e-3
 	      call hfn(1411,hut)
 	    endif
 
@@ -654,12 +755,12 @@ C =============================== Format Statements ============================
      >g11.5,' =  TH spect (deg)')
 
 1004	format('!',/'! Monte-Carlo limits:',/,'!',/,
-     >	g11.5,'= GEN_LIM(1) - DP/P   (half width,% )',/,
-     >	g11.5,'= GEN_LIM(2) - Theta  (half width,mr)',/,
-     >	g11.5,'= GEN_LIM(3) - Phi    (half width,mr)',/,
-     >	g11.5,'= GEN_LIM(4) - HORIZ (full width of 3 sigma cutoff,cm)',/,
-     >	g11.5,'= GEN_LIM(5) - VERT  (full width of 3 sigma cutoff,cm)',/,
-     >	g11.5,'= GEN_LIM(6) - Z      (Full width,cm)')
+     >g11.5,'= GEN_LIM(1) - DP/P   (half width,% )',/,
+     >g11.5,'= GEN_LIM(2) - Theta  (half width,mr)',/,
+     >g11.5,'= GEN_LIM(3) - Phi    (half width,mr)',/,
+     >g11.5,'= GEN_LIM(4) - HORIZ (full width of 3 sigma cutoff,cm)',/,
+     >g11.5,'= GEN_LIM(5) - VERT  (full width of 3 sigma cutoff,cm)',/,
+     >g11.5,'= GEN_LIM(6) - Z      (Full width,cm)')
 
 !inp     >	,/,
 !inp     >	g18.8,' =  Hor. 1/2 gap size (cm)',/,
@@ -667,79 +768,161 @@ C =============================== Format Statements ============================
 
 1005	format('!',/,'! Summary:',/,'!',/,
 !     >	i,' Monte-Carlo trials:')
-     >	i11,' Monte-Carlo trials:')
+     > i11,' Monte-Carlo trials:')
 
 1006	format(i11,' Initial Trials',/
-     >	i11,' Trials made it to the hut',/
-     >	i11,' Trial cut in dc1',/
-     >	i11,' Trial cut in dc2',/
-     >	i11,' Trial cut in s1',/
-     >	i11,' Trial cut in s2',/
-     >	i11,' Trial cut in s3',/
-     >	i11,' Trial cut in cal',/
-     >	i11,' Trials made it thru the detectors and were reconstructed',/
-     >	i11,' Trials passed all cuts and were histogrammed.',/
-     >	)
+     >i11,' Trials made it to the hut',/
+     >i11,' Trial cut in dc1',/
+     >i11,' Trial cut in dc2',/
+     >i11,' Trial cut in s1',/
+     >i11,' Trial cut in s2',/
+     >i11,' Trial cut in s3',/
+     >i11,' Trial cut in cal',/
+     >i11,' Trials made it thru the detectors and were reconstructed',/
+     >i11,' Trials passed all cuts and were histogrammed.',/
+     >)
 
 !1008	format(8i)
 !1009	format(1x,i4,g,i)
 !1010	format(a,i)
 1011	format(
-     >	'DPP ave error, resolution = ',2g18.8,' %',/,
-     >	'DTH ave error, resolution = ',2g18.8,' mr',/,
-     >	'DPH ave error, resolution = ',2g18.8,' mr',/,
-     >	'ZTG ave error, resolution = ',2g18.8,' cm')
+     >'DPP ave error, resolution = ',2g18.8,' %',/,
+     >'DTH ave error, resolution = ',2g18.8,' mr',/,
+     >'DPH ave error, resolution = ',2g18.8,' mr',/,
+     >'ZTG ave error, resolution = ',2g18.8,' cm')
 
 1012	format(1x,16i4)
 
 1015	format(/,
-     >	i11,' stopped in the TARG APERT HOR',/
-     >	i11,' stopped in the TARG APERT VERT',/
-     >	i11,' stopped in the TARG APERT OCTAGON',/
-     >	i11,' stopped in the FIXED SLIT HOR',/
-     >	i11,' stopped in the FIXED SLIT VERT',/
-     >  i11,' stopped in the FIXED SLIT OCTAGON',/
-     >	i11,' stopped in HB ENTRANCE',/
-     >	i11,' stopped in HB MAG ENTRANCE',/
-     >	i11,' stopped in HB MAG EXIT',/
-     >	i11,' stopped in HB EXIT',/
-     >	i11,' stopped in Q1 ENTRANCE',/
-     >	i11,' stopped in Q1 MAG ENTRANCE',/
-     >	i11,' stopped in Q1 MIDPLANE',/
-     >	i11,' stopped in Q1 MAG EXIT',/
-     >	i11,' stopped in Q1 EXIT',/
-     >	i11,' stopped in Q2 ENTRANCE',/
-     >	i11,' stopped in Q2 MAG ENTRANCE',/
-     >	i11,' stopped in Q2 MIDPLANE',/
-     >	i11,' stopped in Q2 MAG EXIT',/
-     >	i11,' stopped in Q2 EXIT',/
-     >	i11,' stopped in Q3 ENTRANCE',/
-     >	i11,' stopped in Q3 MAG ENTRANCE',/
-     >	i11,' stopped in Q3 MIDPLANE',/
-     >	i11,' stopped in Q3 MAG EXIT',/
-     >	i11,' stopped in Q3 EXIT',/
-     >	i11,' stopped in D1 ENTRANCE',/
-     >  i11,' stopped in D1 FLARE',/
-     >	i11,' stopped in D1 MAG ENTRANCE',/
-     >	i11,' stopped in D1 MID-1',/
-     >	i11,' stopped in D1 MID-2',/
-     >	i11,' stopped in D1 MID-3',/
-     >	i11,' stopped in D1 MID-4',/
-     >	i11,' stopped in D1 MID-5',/
-     >	i11,' stopped in D1 MID-6',/
-     >	i11,' stopped in D1 MID-7',/
-     >	i11,' stopped in D1 MAG EXIT',/
-     >	i11,' stopped in D1 EXIT',/
-     >	i11,' stopped in BP ENTRANCE',/
-     >	i11,' stopped in BP EXIT',/
-     >	)
+     >i11,' stopped in the TARG APERT HOR',/
+     >i11,' stopped in the TARG APERT VERT',/
+     >i11,' stopped in the TARG APERT OCTAGON',/
+     >i11,' stopped in the FIXED SLIT HOR',/
+     >i11,' stopped in the FIXED SLIT VERT',/
+     >i11,' stopped in the FIXED SLIT OCTAGON',/
+     >i11,' stopped in HB ENTRANCE',/
+     >i11,' stopped in HB MAG ENTRANCE',/
+     >i11,' stopped in HB MAG EXIT',/
+     >i11,' stopped in HB EXIT',/
+     >i11,' stopped in Q1 ENTRANCE',/
+     >i11,' stopped in Q1 MAG ENTRANCE',/
+     >i11,' stopped in Q1 MIDPLANE',/
+     >i11,' stopped in Q1 MAG EXIT',/
+     >i11,' stopped in Q1 EXIT',/
+     >i11,' stopped in Q2 ENTRANCE',/
+     >i11,' stopped in Q2 MAG ENTRANCE',/
+     >i11,' stopped in Q2 MIDPLANE',/
+     >i11,' stopped in Q2 MAG EXIT',/
+     >i11,' stopped in Q2 EXIT',/
+     >i11,' stopped in Q3 ENTRANCE',/
+     >i11,' stopped in Q3 MAG ENTRANCE',/
+     >i11,' stopped in Q3 MIDPLANE',/
+     >i11,' stopped in Q3 MAG EXIT',/
+     >i11,' stopped in Q3 EXIT',/
+     >i11,' stopped in D1 ENTRANCE',/
+     >i11,' stopped in D1 FLARE',/
+     >i11,' stopped in D1 MAG ENTRANCE',/
+     >i11,' stopped in D1 MID-1',/
+     >i11,' stopped in D1 MID-2',/
+     >i11,' stopped in D1 MID-3',/
+     >i11,' stopped in D1 MID-4',/
+     >i11,' stopped in D1 MID-5',/
+     >i11,' stopped in D1 MID-6',/
+     >i11,' stopped in D1 MID-7',/
+     >i11,' stopped in D1 MAG EXIT',/
+     >i11,' stopped in D1 EXIT',/
+     >i11,' stopped in BP ENTRANCE',/
+     >i11,' stopped in BP EXIT',/
+     > )
 
 1100	format('!',79('-'),/,'! ',a,/,'!')
 1200	format(/,'! ',a,' Coefficients',/,/,
-     >	(5(g18.8,','))
-     >	)
+     >(5(g18.8,','))
+     >)
 1300	format(/,'! ',a,' Coefficient uncertainties',/,/,
-     >	(5(g18.8,','))
-     >	)
+     >(5(g18.8,','))
+     >)
 
+	end
+
+	subroutine calc_elastic_sig(theta_pol,sig_elastic)
+	implicit none
+	real*8 theta_pol   ! 
+	real*8 sig_elastic  ! fm2/sr
+	integer nang
+	parameter (nang=200)
+	real*8 sigma(nang),th_file(nang),frac
+	integer nfile
+	character*132 str_line
+	logical found
+	logical first /.true./
+	integer nang_test
+	real*8 q,q_eff,sig_mott,ratio,dsigde,dsigdth
+	save
+c       
+	if ( first) then
+	   write(*,*) ' opening file'
+	   nfile=0
+	   open(unit=23,status='old',file='carbon_elastic_xn.out')
+	   str_line='#'
+	   do while (str_line(1:1) .EQ. '#')
+	      read ( 23,'(a132)') str_line
+	      write(*,*) str_line
+	      enddo	   
+	    do while (str_line(1:4).ne.' -100')
+	      nfile=nfile+1
+	      if ( nfile .gt. nang) STOP
+	      read(str_line
+     >,'(1x,f6.3,2(1x,f5.3),2(2x,e11.5),1x,f8.3,1x,f9.3,1x,e13.5)') 
+     >  th_file(nfile),q,q_eff,sig_mott,ratio,dsigde,dsigdth,sigma(nfile)
+	      write(*,'(1x,f6.3,2(1x,f5.3),1x,2(1x,e11.5),1x,2(f9.3,1x),1x,e13.5)') 
+     >  th_file(nfile),q,q_eff,sig_mott,ratio,dsigde,dsigdth,sigma(nfile)
+	      read ( 23,'(a132)',end=100) str_line
+	      enddo
+	      close(unit=23)
+	endif
+c
+ 100	nang_test=1
+	first=.false.
+	found = .false.
+	sig_elastic=-100.
+	do while (nang_test .lt. nfile .and. .not. found)
+	      frac= (theta_pol-th_file(nang_test))/(th_file(nang_test+1)-th_file(nang_test))
+	   if (abs(frac) .lt. 1) then
+	      sig_elastic=sigma(nang_test)+(sigma(nang_test+1)-sigma(nang_test))*frac
+	      found = .true.
+	      endif
+	   nang_test = nang_test+ 1
+	enddo
+c
+	return
+	end
+c
+c
+c
+	subroutine calc_inelastic_sig(thr,e_nu,qsq,w,sigma_tot)
+	implicit none
+         real*8 Z,A,qsq,wsq,thr,e_nu,w
+	 real*8 W1,W2,r09,Mp
+	 real*8 F1,F2,siginel,sigma_qe,sigma_tot
+c
+	 wsq=w*w
+	 siginel  = 0.
+	 sigma_qe = 0.
+	 Z = 6.
+	 A = 12.
+	 Mp =938.27
+	 if ( w .gt. 1075.) then
+         call F1F2IN09(Z, A, qsq/1.d6, wsq/1.d6, F1, F2,R09)  !! Peter and Vahe new code 09	
+               W1 = F1 / Mp
+               W2 = F2 / e_nu
+               siginel = ( W2 + 2.0d0*W1*tan(thr/2.0d0)**2 )
+	       endif
+          call F1F2QE09(Z, A, qsq/1.d6, wsq/1.d6, F1, F2)
+               W1 = F1 / Mp
+               W2 = F2 / e_nu
+               sigma_qe = ( W2 + 2.0d0*W1*tan(thr/2.0d0)**2 )
+c
+        sigma_tot = siginel + sigma_qe
+	return
 	end

@@ -55,8 +55,8 @@ C Math constants
 ! should still be pretty good for optics. Physics limits (e.g. elastic
 ! peak at x<=1) will not be preserved.
 
-	logical use_sieve /.false./ 
-c 	logical use_sieve /.true./ 
+	logical use_sieve /.true./ 
+c	logical use_sieve /.false./ 
 c        logical use_coll /.false./ ! use collimator
         logical use_coll /.true./ ! use collimator
 !        logical*4 spec_ntuple   /.true./
@@ -913,7 +913,6 @@ C and track through the detector hut
 	   dydzs = dy_fp
            spec(51)=xs
            spec(52)=ys
-
 C Reconstruct target quantities.
 
 c	   write (6,*) 'I am about to enter the reconstruction file',spectr
